@@ -1,3 +1,10 @@
+# 0.6.1
+
+Preserve case-sensitive QGIS metadata keys and use Riccardo Casoli as author.
+Installable releases omit development tests and build tools; these remain in the
+source repository. Optional-operation failures are logged at debug level.
+No viewpoint geometry or editing behavior changes.
+
 # Changelog
 
 ## 0.6.0 — experimental

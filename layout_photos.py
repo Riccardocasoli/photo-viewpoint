@@ -1,4 +1,5 @@
 """Generate ordinary layout items. No callbacks at export time, no layer edits."""
+import logging
 from .schema import field_name, configure_table
 from .i18n import tr
 from pathlib import Path
@@ -207,7 +208,7 @@ def generate(layout, map_item, layer, width, height, margin, gap):
                 saved_w,saved_h=float(feature['dimX']),float(feature['dimY'])
                 image_size=fit_size(pixel_width,pixel_height,saved_w,saved_h)
             except (ValueError,TypeError):
-                pass
+                logging.getLogger(__name__).debug('Optional operation could not complete', exc_info=True)
         description=feature[field_name(feature, 'caption')] if layer.fields().indexFromName(field_name(layer,'caption'))>=0 else ''
         text=caption_text(code,Path(path).name,description if isinstance(description,str) else '')
         record = {'fid': feature.id(), 'code': code, 'path': str(path),
@@ -219,7 +220,7 @@ def generate(layout, map_item, layer, width, height, margin, gap):
                     pos = page_item.mapToScene(QPointF(x,y))
                     record['box'] = (pos.x(),pos.y(),*image_size)
             except (TypeError,ValueError):
-                pass
+                logging.getLogger(__name__).debug('Optional operation could not complete', exc_info=True)
         records.append(record)
     if not records:
         raise ValueError(tr('Nessuna presa con immagine locale disponibile nell’inquadratura.\n') + '\n'.join(skipped[:8]))

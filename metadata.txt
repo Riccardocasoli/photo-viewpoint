@@ -1,10 +1,10 @@
 [general]
 name = Photo viewpoint
 description = Three-click or GPS photo import, editable viewpoints, EXIF metadata and layout callouts.
-version = 0.6.0
-qgisminimumversion = 3.28
-qgismaximumversion = 3.99
-author = Riccardo Casoli, with ChatGPT / Codex development assistance
+version = 0.6.1
+qgisMinimumVersion = 3.28
+qgisMaximumVersion = 3.99
+author=Riccardo Casoli
 email = casoli@risorsaterra.it
 homepage = https://github.com/Riccardocasoli/photo-viewpoint#readme
 repository = https://github.com/Riccardocasoli/photo-viewpoint
@@ -15,6 +15,7 @@ category = Vector
 tags = photography,photo,viewpoint,exif,layout,field survey
 experimental = True
 deprecated = False
-hasprocessingprovider = False
-changelog = 0.6.0: English code/caption schema and field ordering; long captions outside DBF limits; English-only UI; four portable style presets; automatic QML/database style storage; non-destructive English GeoPackage copy; bilingual manuals.
+hasProcessingProvider = False
+changelog = 0.6.1: Preserve metadata key casing; correct author metadata; omit development tests/tools from installable releases; log optional-operation exceptions.
+    0.6.0: English code/caption schema and field ordering; long captions outside DBF limits; English-only UI; four portable style presets; automatic QML/database style storage; non-destructive English GeoPackage copy; bilingual manuals.
 

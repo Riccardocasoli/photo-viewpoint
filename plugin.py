@@ -1,3 +1,4 @@
+import logging
 from .schema import field_name
 from .schema import configure_table, caption_length
 from .i18n import tr
@@ -428,7 +429,7 @@ class PhotoTool(QgsMapTool):
                 s['fov'] = aperture(s['azimuth'], edge)
             self.draw()
         except ValueError:
-            pass
+            logging.getLogger(__name__).debug('Optional operation could not complete', exc_info=True)
 
     def canvasReleaseEvent(self, event):
         if event.button() != Qt.LeftButton:
@@ -543,4 +544,4 @@ class PhotoTool(QgsMapTool):
             try:
                 signal.disconnect(slot)
             except (TypeError, RuntimeError):
-                pass
+                logging.getLogger(__name__).debug('Optional operation could not complete', exc_info=True)

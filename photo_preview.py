@@ -1,3 +1,4 @@
+import logging
 from .schema import field_name
 from .i18n import tr
 from qgis.PyQt.QtCore import Qt, QUrl, QSize
@@ -166,4 +167,4 @@ class PreviewTool(QgsMapTool):
         try:
             self.layer.willBeDeleted.disconnect(self.layer_deleted)
         except (TypeError, RuntimeError):
-            pass
+            logging.getLogger(__name__).debug('Optional operation could not complete', exc_info=True)

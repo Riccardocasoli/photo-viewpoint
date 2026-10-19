@@ -9,7 +9,10 @@ parser.add_argument('--email')
 parser.add_argument('--repository')
 parser.add_argument('--homepage')
 args=parser.parse_args()
-metadata=configparser.ConfigParser();metadata.read(root/'metadata.txt')
+metadata=configparser.ConfigParser()
+# QGIS metadata keys are case-sensitive. Preserve their documented spelling.
+metadata.optionxform=str
+metadata.read(root/'metadata.txt', encoding='utf-8')
 section=metadata['general']
 if args.email:section['email']=args.email
 if args.repository:
@@ -30,7 +33,8 @@ with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
     for path in sorted(root.rglob('*')):
         relative=path.relative_to(root)
         if not path.is_file() or any(part in ('dist','__pycache__','.git') for part in relative.parts):continue
-        if args.release and '.github' in relative.parts:continue
+        if args.release and ('.github' in relative.parts or 'tools' in relative.parts
+                            or path.name.startswith(('test_', 'smoke_test_'))):continue
         if relative.as_posix()=='metadata.txt':
             import io
             text=io.StringIO();metadata.write(text);z.writestr('prese_fotografiche/metadata.txt',text.getvalue())

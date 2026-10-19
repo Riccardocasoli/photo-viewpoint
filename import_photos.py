@@ -1,4 +1,5 @@
 """Batch photo import and a persistent repair queue for geometryless records."""
+import logging
 from .schema import field_name
 from pathlib import Path
 from qgis.PyQt.QtCore import Qt
@@ -188,4 +189,4 @@ class PlacePendingTool(QgsMapTool):
 
     def dispose(self):
         try:self.layer.willBeDeleted.disconnect(self.deleted)
-        except (RuntimeError,TypeError):pass
+        except (RuntimeError,TypeError):logging.getLogger(__name__).debug('Signal already disconnected', exc_info=True)

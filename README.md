@@ -1,6 +1,6 @@
 # Photo viewpoint — QGIS plugin
 
-**Experimental 0.6.0.** Create and edit photo viewpoints in three clicks, or import
+**Experimental 0.6.1.** Create and edit photo viewpoints in three clicks, or import
 photos using available EXIF GPS. Preview original images, track displacement from
 GPS and generate freely movable photo callouts in print layouts.
 
@@ -72,6 +72,9 @@ From the parent directory:
 ```sh
 python -m unittest discover -s prese_fotografiche -t . -p 'test_*.py' -v
 ```
+
+Desktop smoke tests are development files retained in the source repository,
+not included in the installable ZIP. To use them, work from a source checkout.
 
 QGIS Python console:
 
