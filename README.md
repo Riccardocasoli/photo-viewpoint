@@ -11,7 +11,7 @@ GPS and generate freely movable photo callouts in print layouts.
 - [Publication handover](PUBLISHING.md)
 
 Open MANUALE.html in a browser to choose a manual. Both are printable and their images are embedded. The interface follows the QGIS language, with an English fallback. Earlier
-GUIDA_0_*.md files describe historical versions; the 0.6 manuals take precedence.
+GUIDA_0_*.md files describe historical versions; current manuals take precedence.
 
 ## What's new in 0.6
 
