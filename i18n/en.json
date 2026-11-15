@@ -1,6 +1,6 @@
 {
   "Prese fotografiche": "Photo viewpoint",
-  "Crea layer foto": "Create photo layer",
+  "Crea layer foto": "Create new Viewpoints layer",
   "Nuova presa": "New viewpoint",
   "Modifica presa": "Edit viewpoint",
   "Visualizza foto": "View photo",
@@ -20,7 +20,7 @@
   "Seleziona un layer Point semplice (senza Z/M).": "Select a simple 2D Point layer (no Z/M).",
   "Il layer deve avere un CRS proiettato con unità in metri.": "The layer requires a projected CRS with metre units.",
   "Campi mancanti: ": "Missing fields: ",
-  ". Usa Crea layer foto.": ". Use Create photo layer.",
+  ". Usa Crea layer foto.": ". Use Create new Viewpoints layer.",
   "Il campo codice deve essere di tipo Testo.": "The code field must be a text field.",
   "Il campo ": "Field ",
   " deve essere di tipo Decimale/Double.": " must be a decimal/Double field.",

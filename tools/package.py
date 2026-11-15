@@ -26,7 +26,8 @@ if args.release:
             parser.error('Provide real maintainer metadata: '+key)
     if not (root/'LICENSE').is_file():parser.error('LICENSE is missing')
 for path in root.glob('*.py'):ast.parse(path.read_text())
-json.loads((root/'i18n/en.json').read_text())
+for catalog in (root/'i18n').glob('*.json'):
+    json.loads(catalog.read_text(encoding='utf-8'))
 output=root/'dist';output.mkdir(exist_ok=True)
 archive=output/('prese_fotografiche_v'+section['version']+'.zip')
 with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
