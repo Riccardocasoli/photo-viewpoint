@@ -1,3 +1,7 @@
+## 0.7.7
+
+- Qualify five legacy QGIS enum names flagged by the Qt 6 checker.
+
 # 0.7.6 (experimental)
 
 - Follow the QGIS interface language for plugin commands and dialogs, with an English fallback.

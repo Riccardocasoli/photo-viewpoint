@@ -1,7 +1,7 @@
 [general]
 name = Photo viewpoint
 description = Three-click or GPS photo import, editable viewpoints, EXIF metadata and layout callouts.
-version = 0.7.6
+version = 0.7.7
 qgisMinimumVersion = 3.28
 qgisMaximumVersion = 4.99
 author=Riccardo Casoli
@@ -16,7 +16,8 @@ tags = photography,photo,viewpoint,exif,layout,field survey
 experimental = True
 deprecated = False
 hasProcessingProvider = False
-changelog = 0.7.6: Localize commands and dialogs by QGIS language; embed icons and localized screenshots in standalone manuals.
+changelog = 0.7.7: Scope legacy QGIS enum names to resolve the Qt 6 compatibility report.
+    0.7.6: Localize commands and dialogs by QGIS language; embed icons and localized screenshots in standalone manuals.
     0.7.5: Improve command labels and menu placement; add bilingual illustrated manuals and workflow GIFs.
     0.7.4: Passive photo previews with native tip coordination; register Layout Photos in standard designer controls.
     0.7.3: Stabilize photo hover previews and expose Layout Photos in the layout menu.

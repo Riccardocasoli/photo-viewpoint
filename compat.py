@@ -20,8 +20,8 @@ if hasattr(Qgis, 'WkbType'):
 else:
     from qgis.core import QgsWkbTypes
 
-    WKB_POINT = QgsWkbTypes.Point
-    GEOMETRY_LINE = QgsWkbTypes.LineGeometry
+    WKB_POINT = QgsWkbTypes.Type.Point
+    GEOMETRY_LINE = QgsWkbTypes.GeometryType.LineGeometry
 
 if hasattr(Qgis, 'DistanceUnit'):
     DISTANCE_METRES = Qgis.DistanceUnit.Meters
@@ -30,9 +30,9 @@ if hasattr(Qgis, 'DistanceUnit'):
 else:
     from qgis.core import QgsUnitTypes
 
-    DISTANCE_METRES = QgsUnitTypes.DistanceMeters
-    LAYOUT_MM = QgsUnitTypes.LayoutMillimeters
-    RENDER_MAP_UNITS = QgsUnitTypes.RenderMapUnits
+    DISTANCE_METRES = QgsUnitTypes.DistanceUnit.DistanceMeters
+    LAYOUT_MM = QgsUnitTypes.LayoutUnit.LayoutMillimeters
+    RENDER_MAP_UNITS = QgsUnitTypes.RenderUnit.RenderMapUnits
 
 
 def mouse_position(event):

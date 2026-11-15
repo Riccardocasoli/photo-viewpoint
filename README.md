@@ -4,13 +4,13 @@ Photo viewpoint links field photographs to camera locations, viewing directions
 and fields of view. Create viewpoints manually, import geotagged images, and add
 photo callouts to QGIS print layouts.
 
-**Current release: 0.7.6 (experimental).** Tested by the maintainer on QGIS 4.2.3.
+**Current release: 0.7.7 (experimental).** The preceding 0.7.6 release was tested by the maintainer on QGIS 4.2.3.
 The plugin supports QGIS 3 and QGIS 4. Its interface follows the QGIS language:
 Italian when selected, English otherwise.
 
 ## Install
 
-Download [prese_fotografiche_v0.7.6.zip](https://github.com/Riccardocasoli/photo-viewpoint/releases/download/v0.7.6-r1/prese_fotografiche_v0.7.6.zip).
+Download [prese_fotografiche_v0.7.7.zip](https://github.com/Riccardocasoli/photo-viewpoint/releases/download/v0.7.7/prese_fotografiche_v0.7.7.zip).
 In QGIS, open **Plugins → Manage and Install Plugins → Install from ZIP**.
 Select the downloaded ZIP without extracting it.
 
