@@ -1,16 +1,16 @@
 """Optional metadata columns, all names compatible with Shapefile's limit."""
 from .i18n import tr
-from qgis.PyQt.QtCore import QVariant
+from .compat import FIELD_STRING, FIELD_DOUBLE
 from qgis.core import QgsField,QgsProject,QgsCoordinateReferenceSystem,QgsCoordinateTransform,QgsPointXY,QgsDefaultValue,QgsDistanceArea
 import math
 from .exif_reader import read_exif
 from .photo_paths import resolve_photo
 from .schema import configure_table
 
-METADATA_FIELDS={'gps_lat':QVariant.Double,'gps_lon':QVariant.Double,'gps_alt':QVariant.Double,
- 'gps_dir':QVariant.Double,'gps_x':QVariant.Double,'gps_y':QVariant.Double,
- 'gps_dref':QVariant.String,'gps_datum':QVariant.String,'exif_date':QVariant.String,
- 'exif_cam':QVariant.String,'exif_stat':QVariant.String}
+METADATA_FIELDS={'gps_lat':FIELD_DOUBLE,'gps_lon':FIELD_DOUBLE,'gps_alt':FIELD_DOUBLE,
+ 'gps_dir':FIELD_DOUBLE,'gps_x':FIELD_DOUBLE,'gps_y':FIELD_DOUBLE,
+ 'gps_dref':FIELD_STRING,'gps_datum':FIELD_STRING,'exif_date':FIELD_STRING,
+ 'exif_cam':FIELD_STRING,'exif_stat':FIELD_STRING}
 
 
 def add_metadata_fields(layer):
@@ -19,12 +19,12 @@ def add_metadata_fields(layer):
         if idx>=0:
             if layer.fields().field(idx).type()!=kind:
                 raise ValueError(tr('Metadata field has an incompatible type: ')+name)
-        elif not layer.addAttribute(QgsField(name,kind,len=100) if kind==QVariant.String else QgsField(name,kind,len=24,prec=10)):
+        elif not layer.addAttribute(QgsField(name,kind,len=100) if kind==FIELD_STRING else QgsField(name,kind,len=24,prec=10)):
             raise ValueError(tr('Cannot add metadata field: ')+name)
-    for name,kind in [('distGPS',QVariant.Double),('vp_status',QVariant.String)]:
+    for name,kind in [('distGPS',FIELD_DOUBLE),('vp_status',FIELD_STRING)]:
         idx=layer.fields().indexFromName(name)
         if idx<0:
-            if not layer.addAttribute(QgsField(name,kind,len=24,prec=3) if kind==QVariant.Double else QgsField(name,kind,len=24)):
+            if not layer.addAttribute(QgsField(name,kind,len=24,prec=3) if kind==FIELD_DOUBLE else QgsField(name,kind,len=24)):
                 raise ValueError(tr('Cannot add metadata field: ')+name)
         elif layer.fields().field(idx).type()!=kind:
             raise ValueError(tr('Metadata field has an incompatible type: ')+name)

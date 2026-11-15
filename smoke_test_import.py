@@ -1,6 +1,5 @@
 """Run inside QGIS console: import prese_fotografiche.smoke_test_import as t; t.run()."""
 from .schema import field_name
-from qgis.PyQt.QtCore import QVariant
 from qgis.core import QgsVectorLayer,QgsField,QgsGeometry,QgsPointXY
 from .plugin import FIELDS
 from .import_photos import import_records

@@ -1,12 +1,14 @@
 """Portable native-QGIS styles. SVG artwork is embedded in QML as base64."""
+from .i18n import tr
 import base64,re
 from pathlib import Path
+from .compat import RENDER_MAP_UNITS
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QColor
 from qgis.PyQt.QtWidgets import (QDialog,QVBoxLayout,QFormLayout,QComboBox,QDoubleSpinBox,
  QDialogButtonBox,QLabel,QCheckBox,QPushButton,QFileDialog)
 from qgis.core import (QgsMarkerSymbol,QgsSvgMarkerSymbolLayer,QgsProperty,
- QgsGeometryGeneratorSymbolLayer,QgsLineSymbol,QgsFillSymbol,QgsUnitTypes,
+ QgsGeometryGeneratorSymbolLayer,QgsLineSymbol,QgsFillSymbol,
  QgsSingleSymbolRenderer,QgsPalLayerSettings,Qgis,QgsTextFormat,QgsTextBufferSettings,
  QgsVectorLayerSimpleLabeling,QgsProviderRegistry)
 from .schema import field_name,configure_table
@@ -35,7 +37,7 @@ def apply_style(layer,preset='classic',size=4,labels=True):
             gen=QgsGeometryGeneratorSymbolLayer.create({'geometryModifier':RAYS,'SymbolType':'Line'})
             gen.setSubSymbol(QgsLineSymbol.createSimple({'line_color':'60,155,210' if preset=='camera' else '220,75,35',
                 'line_width':'0.22' if preset=='camera' else '0.35','line_style':'dash' if preset=='camera' else 'solid'}))
-        gen.setUnits(QgsUnitTypes.RenderMapUnits)
+        gen.setUnits(RENDER_MAP_UNITS)
         marker.insertSymbolLayer(0,gen)
     layer.setRenderer(QgsSingleSymbolRenderer(marker))
     settings=QgsPalLayerSettings();settings.fieldName=field_name(layer,'code')
@@ -58,41 +60,41 @@ def style_paths(path,table=''):
 
 
 def save_portable_style(layer):
-    if layer.providerType()=='memory':return ['Temporary layer: save the project or export a dataset before saving a sidecar style.']
+    if layer.providerType()=='memory':return [tr('Temporary layer: save the project or export a dataset before saving a sidecar style.')]
     info=QgsProviderRegistry.instance().decodeUri(layer.providerType(),layer.source())
     path=info.get('path')
-    if not path or not Path(path).is_file():return ['No local dataset path was found. Use Save QML to choose a location.']
+    if not path or not Path(path).is_file():return [tr('No local dataset path was found. Use Save QML to choose a location.')]
     target=style_paths(path,info.get('layerName') or info.get('layername') or layer.name())
     message,ok=layer.saveNamedStyle(str(target))
-    if not ok:raise ValueError('Could not save QML style: '+str(message))
-    result=['QML saved: '+str(target)]
+    if not ok:raise ValueError(tr('Could not save QML style: ')+str(message))
+    result=[tr('QML saved: ')+str(target)]
     if Path(path).suffix.lower() in ('.gpkg','.sqlite'):
         try:
             error=layer.saveStyleToDatabase('Photo viewpoint','Portable viewpoint style and field configuration',True,'')
-            if error:result.append('Database default style was not saved: '+str(error)+'. Load the QML sidecar manually.')
-            else:result.append('Default style saved inside the dataset.')
-        except Exception as error:result.append('Database style unavailable: '+str(error)+'. Load the QML sidecar manually.')
+            if error:result.append(tr('Database default style was not saved: ')+str(error)+tr('. Load the QML sidecar manually.'))
+            else:result.append(tr('Default style saved inside the dataset.'))
+        except Exception as error:result.append(tr('Database style unavailable: ')+str(error)+tr('. Load the QML sidecar manually.'))
     return result
 
 
 class StyleDialog(QDialog):
     def __init__(self,parent,layer,copy_callback):
         super().__init__(parent)
-        self.setWindowTitle('Apply viewpoint style');self.resize(570,300)
+        self.setWindowTitle(tr('Apply viewpoint style'));self.resize(570,300)
         outer=QVBoxLayout(self);form=QFormLayout()
         self.preset=QComboBox(self)
-        for key,title in PRESETS:self.preset.addItem(title,key)
+        for key,title in PRESETS:self.preset.addItem(tr(title),key)
         index=self.preset.findData(layer.customProperty('photo_viewpoint/preset','classic'))
         self.preset.setCurrentIndex(max(0,index))
         self.size=QDoubleSpinBox(self);self.size.setRange(.5,30);self.size.setSuffix(' mm')
         self.size.setValue(float(layer.customProperty('photo_viewpoint/size',4)))
-        form.addRow('Symbol:',self.preset);form.addRow('Symbol size:',self.size);outer.addLayout(form)
-        self.labels=QCheckBox('Show code labels',self);self.labels.setChecked(layer.labelsEnabled());outer.addWidget(self.labels)
-        self.persist=QCheckBox('Save a reusable QML / database default style',self);self.persist.setChecked(True);outer.addWidget(self.persist)
-        note=QLabel('The arrow preset uses azimuth only. Other presets use FOV and graphic length.\nStyles contain native QGIS expressions and embedded SVG artwork.\nSave layer edits before saving a database default style.\nExisting datasets keep their physical field names; use an English-schema copy to convert them.',self)
+        form.addRow(tr('Symbol:'),self.preset);form.addRow(tr('Symbol size:'),self.size);outer.addLayout(form)
+        self.labels=QCheckBox(tr('Show code labels'),self);self.labels.setChecked(layer.labelsEnabled());outer.addWidget(self.labels)
+        self.persist=QCheckBox(tr('Save a reusable QML / database default style'),self);self.persist.setChecked(True);outer.addWidget(self.persist)
+        note=QLabel(tr('The arrow preset uses azimuth only. Other presets use FOV and graphic length.\nStyles contain native QGIS expressions and embedded SVG artwork.\nSave layer edits before saving a database default style.\nExisting datasets keep their physical field names; use an English-schema copy to convert them.'),self)
         note.setWordWrap(True);outer.addWidget(note)
-        copy=QPushButton('Create English-field GeoPackage copy…',self);copy.clicked.connect(copy_callback);outer.addWidget(copy)
-        buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel,self)
-        buttons.button(QDialogButtonBox.Ok).setText('OK')
-        buttons.button(QDialogButtonBox.Cancel).setText('Cancel')
+        copy=QPushButton(tr('Create English-field GeoPackage copy…'),self);copy.clicked.connect(copy_callback);outer.addWidget(copy)
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel,self)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr('OK'))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr('Cancel'))
         buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);outer.addWidget(buttons)

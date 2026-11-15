@@ -15,7 +15,7 @@ import tempfile
 def run(iface):
     with tempfile.TemporaryDirectory() as directory:
         image_path = Path(directory) / 'immagine con spazi.jpg'
-        image = QImage(80, 40, QImage.Format_RGB32)
+        image = QImage(80, 40, QImage.Format.Format_RGB32)
         image.fill(0xffffff)
         assert image.save(str(image_path), 'JPG')
         preview = PreviewDialog(iface.mainWindow(), 'TEST', str(image_path), '', '')
@@ -30,11 +30,11 @@ def run(iface):
     dialog.code_edit.setText('F001')
     dialog.photo_edit.setText('/tmp/foto con spazi.jpg')
     dialog.accept()
-    assert dialog.result() != QDialog.Accepted
+    assert dialog.result() != QDialog.DialogCode.Accepted
     assert dialog.photo_edit.text() == '/tmp/foto con spazi.jpg'
     dialog.code_edit.setText(' F002 ')
     dialog.accept()
-    assert dialog.result() == QDialog.Accepted
+    assert dialog.result() == QDialog.DialogCode.Accepted
     assert dialog.values() == ('F002', '/tmp/foto con spazi.jpg')
     layer = QgsVectorLayer('Point?crs=EPSG:32632', 'test non persistente', 'memory')
     assert layer.isValid()
@@ -58,7 +58,7 @@ def run(iface):
         saved = next(f for f in layer.getFeatures() if f[field_name(f, 'code')] == 'FOTO_TEST')
         assert saved['photo'] == '/tmp/foto con spazi.jpg'
         layer.undoStack().undo()
-        assert layer.featureCount() == 1
+        assert layer.featureCount() == 0
     finally:
         tool.dispose()
         iface.statusBarIface().clearMessage()

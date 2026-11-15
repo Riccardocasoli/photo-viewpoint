@@ -20,7 +20,7 @@ class SchemaTests(unittest.TestCase):
 
     def test_ui_is_english(self):
         self.assertEqual(tr('Applica stile foto'),'Apply viewpoint style')
-        self.assertEqual(tr('Crea layer foto'),'Create photo layer')
+        self.assertEqual(tr('Crea layer foto'),'Create new Viewpoints layer')
 
     def test_embedded_artwork_and_style_paths(self):
         tree=ast.parse((Path(__file__).parent/'viewpoint_styles.py').read_text())

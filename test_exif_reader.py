@@ -66,7 +66,7 @@ class ExifTests(unittest.TestCase):
             self.assertEqual(read_exif(Path(directory)/'missing.jpg')['exif_stat'],'unreadable')
 
     def test_translation_and_stable_brand(self):
-        self.assertEqual(translate('Crea layer foto','en'),'Create photo layer')
+        self.assertEqual(translate('Crea layer foto','en'),'Create new Viewpoints layer')
         self.assertEqual(translate('Create photo viewpoint layer','it'),'Crea layer punti di presa fotografica')
         self.assertEqual(translate('Prese fotografiche','it'),'Photo viewpoint')
         self.assertEqual(translate('Nuova presa','fr'),'New viewpoint')

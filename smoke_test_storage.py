@@ -2,7 +2,7 @@
 from .schema import field_name
 import tempfile
 from pathlib import Path
-from qgis.PyQt.QtCore import QVariant
+from .compat import FIELD_STRING, FIELD_DOUBLE
 from qgis.core import QgsVectorLayer,QgsField,QgsFeature,QgsGeometry,QgsPointXY
 from .create_layer_dialog import write_dataset,available_drivers,FORMATS
 from .plugin import PhotoPlugin,FIELDS
@@ -12,8 +12,8 @@ from .photo_metadata import METADATA_FIELDS
 
 def run(iface):
     source=QgsVectorLayer('Point?crs=EPSG:32632','Photo viewpoint','memory')
-    source.dataProvider().addAttributes([QgsField(n,t,len=254) if t==QVariant.String else QgsField(n,t,len=24,prec=10)
-        for n,t in dict(FIELDS,**METADATA_FIELDS).items()])
+    source.dataProvider().addAttributes([QgsField(n,t,len=254) if t==FIELD_STRING else QgsField(n,t,len=24,prec=10)
+        for n,t in dict(FIELDS,**METADATA_FIELDS,distGPS=FIELD_DOUBLE,vp_status=FIELD_STRING).items()])
     source.updateFields()
     with tempfile.TemporaryDirectory() as directory:
         exif=Path(directory)/'test.tif';exif.write_bytes(fixture())

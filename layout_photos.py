@@ -1,28 +1,33 @@
 """Generate ordinary layout items. No callbacks at export time, no layer edits."""
 import logging
+import json
 from .schema import field_name, configure_table
 from .i18n import tr
 from pathlib import Path
 import math
-from qgis.PyQt.QtCore import QPointF, Qt, QVariant, QRectF
-from qgis.PyQt.QtGui import QColor, QPolygonF, QImageReader, QFontMetricsF
+from .compat import FIELD_STRING, FIELD_DOUBLE, enum_value
+from .compat import WKB_POINT
+from .compat import LAYOUT_MM
+from qgis.PyQt.QtCore import QPointF, Qt, QRectF
+from qgis.PyQt.QtGui import QColor, QPolygonF, QImageReader, QImageIOHandler, QFontMetricsF
 from qgis.PyQt.QtWidgets import (QDialog, QDialogButtonBox, QComboBox, QDoubleSpinBox,
     QFormLayout, QLabel, QMessageBox, QVBoxLayout, QPushButton)
-from qgis.core import (QgsProject, QgsVectorLayer, QgsWkbTypes, QgsLayoutItemMap,
+from qgis.core import (QgsProject, QgsVectorLayer, QgsLayoutItemMap,
     QgsLayoutItem, QgsLayoutItemPage, QgsLayoutItemPicture, QgsLayoutItemPolyline,
-    QgsLayoutItemLabel, QgsLayoutPoint, QgsLayoutSize, QgsUnitTypes,
-    QgsCoordinateTransform, QgsLineSymbol, QgsTextFormat, QgsField)
+    QgsLayoutItemLabel, QgsLayoutPoint, QgsLayoutSize,
+    QgsCoordinateTransform, QgsLineSymbol, QgsField)
 from .photo_paths import resolve_photo
-from .layout_arrange import arrange, fit_size, caption_text
+from .layout_arrange import arrange, fit_size
+from .layout_caption import CaptionControls, make_caption, apply_caption
 
 TAG = 'prese_fotografiche/layout_map'
 ROLE = 'prese_fotografiche/role'
 FID = 'prese_fotografiche/fid'
 LAYER = 'prese_fotografiche/layer'
 
-LAYOUT_FIELDS = [('pf_x',QVariant.Double),('pf_y',QVariant.Double),
-    ('pf_map',QVariant.String),('dimX',QVariant.Double),('dimY',QVariant.Double),
-    ('caption',QVariant.String)]
+LAYOUT_FIELDS = [('pf_x',FIELD_DOUBLE),('pf_y',FIELD_DOUBLE),
+    ('pf_map',FIELD_STRING),('dimX',FIELD_DOUBLE),('dimY',FIELD_DOUBLE),
+    ('caption',FIELD_STRING)]
 
 
 def check_fields(layer):
@@ -38,7 +43,7 @@ def add_fields(layer):
         name=field_name(layer,requested)
         if layer.fields().indexFromName(name)<0:
             length=(254 if layer.source().split('|')[0].lower().endswith('.shp') else 2000) if requested=='caption' else 80
-            field=QgsField(name,kind,len=length) if kind==QVariant.String else QgsField(name,kind,len=20,prec=3)
+            field=QgsField(name,kind,len=length) if kind==FIELD_STRING else QgsField(name,kind,len=20,prec=3)
             if not layer.addAttribute(field):
                 raise ValueError(tr('Impossibile aggiungere il campo ')+name)
     configure_table(layer)
@@ -65,7 +70,7 @@ def caption_height(label,width):
     font.setPixelSize(100)
     scale=fmt.size()*25.4/72/100
     rect=QFontMetricsF(font).boundingRect(QRectF(0,0,max(1,width/scale),1000000),
-        Qt.TextWordWrap | Qt.TextWrapAnywhere,label.text())
+        enum_value(Qt.TextFlag.TextWordWrap | Qt.TextFlag.TextWrapAnywhere),label.text())
     return max(6,rect.height()*scale+2)
 
 
@@ -117,7 +122,7 @@ def update_link(map_item, layer, fid, picture, line, caption):
 
 
 def save_positions(layout, map_item, layer):
-    if layout.units() != QgsUnitTypes.LayoutMillimeters:
+    if layout.units() != LAYOUT_MM:
         raise ValueError(tr('Imposta il layout in millimetri.'))
     page = layout.pageCollection().page(map_item.page())
     if page is None:
@@ -151,12 +156,13 @@ def save_positions(layout, map_item, layer):
 
 
 def compatible(layer):
-    return (isinstance(layer, QgsVectorLayer) and layer.wkbType() == QgsWkbTypes.Point
+    return (isinstance(layer, QgsVectorLayer) and layer.wkbType() == WKB_POINT
             and all(layer.fields().indexFromName(field_name(layer,n)) >= 0 for n in ('photo', 'code')))
 
 
-def generate(layout, map_item, layer, width, height, margin, gap):
-    if layout.units() != QgsUnitTypes.LayoutMillimeters:
+def generate(layout, map_item, layer, width, height, margin, gap, caption_options=None):
+    caption_options = caption_options or {}
+    if layout.units() != LAYOUT_MM:
         raise ValueError(tr('Imposta le unità del layout in millimetri.'))
     if layout.atlas().enabled():
         raise ValueError(tr('Questa prima versione lavora su layout statici: disattiva l’atlante.'))
@@ -174,6 +180,15 @@ def generate(layout, map_item, layer, width, height, margin, gap):
     tx = QgsCoordinateTransform(layer.crs(), map_item.crs(), QgsProject.instance())
     records, skipped = [], []
     key = map_item.uuid()
+    old = [item for item in layout.items() if isinstance(item, QgsLayoutItem)
+           and item.customProperty(TAG, '') == key
+           and item.customProperty(LAYER, '') == layer.id()]
+    existing = {}
+    for item in old:
+        if isinstance(item, QgsLayoutItemPicture):
+            top_left = item.mapToScene(item.rect().topLeft())
+            existing[int(item.customProperty(FID))] = (
+                top_left.x(), top_left.y(), item.rect().width(), item.rect().height())
     for feature in layer.getFeatures():
         if feature.geometry().isEmpty():
             continue
@@ -194,7 +209,7 @@ def generate(layout, map_item, layer, width, height, margin, gap):
                 raise ValueError(tr('foto locale non disponibile o illeggibile'))
             size=reader.size()
             pixel_width,pixel_height=size.width(),size.height()
-            if int(reader.transformation()) & 4:  # Qt: EXIF transformation swaps X/Y.
+            if reader.transformation() & QImageIOHandler.Transformation.TransformationRotate90:  # Qt: EXIF transformation swaps X/Y.
                 pixel_width,pixel_height=pixel_height,pixel_width
             image_size=fit_size(pixel_width,pixel_height,width,height)
         except (ValueError, OSError) as error:
@@ -203,24 +218,29 @@ def generate(layout, map_item, layer, width, height, margin, gap):
         scene = map_item.mapToScene(local)
         owner = feature['pf_map'] if layer.fields().indexFromName('pf_map')>=0 else ''
         matches = not isinstance(owner,str) or owner in ('',key)
-        if matches and all(layer.fields().indexFromName(n)>=0 for n in ('dimX','dimY')):
-            try:
-                saved_w,saved_h=float(feature['dimX']),float(feature['dimY'])
-                image_size=fit_size(pixel_width,pixel_height,saved_w,saved_h)
-            except (ValueError,TypeError):
-                logging.getLogger(__name__).debug('Optional operation could not complete', exc_info=True)
-        description=feature[field_name(feature, 'caption')] if layer.fields().indexFromName(field_name(layer,'caption'))>=0 else ''
-        text=caption_text(code,Path(path).name,description if isinstance(description,str) else '')
+        text = make_caption(feature, layer, Path(path).name, caption_options)
         record = {'fid': feature.id(), 'code': code, 'path': str(path),
-                        'anchor': (scene.x(), scene.y()), 'size':image_size,'caption':text}
-        if all(layer.fields().indexFromName(n)>=0 for n in ('pf_x','pf_y')):
-            try:
-                x,y = float(feature['pf_x']),float(feature['pf_y'])
-                if math.isfinite(x) and math.isfinite(y) and matches:
-                    pos = page_item.mapToScene(QPointF(x,y))
-                    record['box'] = (pos.x(),pos.y(),*image_size)
-            except (TypeError,ValueError):
-                logging.getLogger(__name__).debug('Optional operation could not complete', exc_info=True)
+                  'anchor': (scene.x(), scene.y()), 'size': image_size, 'caption': text}
+        # Live layout items take precedence over the optional layer backup.
+        if feature.id() in existing:
+            record['box'] = existing[feature.id()]
+        elif matches:
+            fields = layer.fields()
+            if all(fields.indexFromName(n) >= 0 for n in ('dimX', 'dimY')):
+                try:
+                    w, h = float(feature['dimX']), float(feature['dimY'])
+                    if math.isfinite(w) and math.isfinite(h) and w > 0 and h > 0:
+                        record['size'] = (w, h)
+                except (TypeError, ValueError):
+                    logging.getLogger(__name__).debug('No saved photo dimensions')
+            if all(fields.indexFromName(n) >= 0 for n in ('pf_x', 'pf_y')):
+                try:
+                    x, y = float(feature['pf_x']), float(feature['pf_y'])
+                    if math.isfinite(x) and math.isfinite(y):
+                        pos = page_item.mapToScene(QPointF(x, y))
+                        record['box'] = (pos.x(), pos.y(), *record['size'])
+                except (TypeError, ValueError):
+                    logging.getLogger(__name__).debug('No saved photo position')
         records.append(record)
     if not records:
         raise ValueError(tr('Nessuna presa con immagine locale disponibile nell’inquadratura.\n') + '\n'.join(skipped[:8]))
@@ -229,8 +249,6 @@ def generate(layout, map_item, layer, width, height, margin, gap):
     fixed = [r for r in records if 'box' in r]
     automatic = [r for r in records if 'box' not in r]
     positions = fixed + (arrange(automatic, rect_tuple(page_rect), rect_tuple(map_rect), width, height, margin, gap) if automatic else [])
-    # Never replace arbitrary user items: only our own items for this map.
-    old = [i for i in layout.items() if isinstance(i, QgsLayoutItem) and i.customProperty(TAG, '') == key]
     # Overlap is explicitly allowed with maps, graphics and other photos.
     ensure_fields(layer)
     base_z=max([i.zValue() for i in layout.items() if isinstance(i,QgsLayoutItem)
@@ -257,7 +275,7 @@ def generate(layout, map_item, layer, width, height, margin, gap):
                 item.setId('PF %s %s' % (record[field_name(record, 'code')], suffix))
             line.setZValue(base_z+1)
             picture.setPicturePath(record['path'])
-            picture.setResizeMode(QgsLayoutItemPicture.ZoomResizeFrame)
+            picture.setResizeMode(QgsLayoutItemPicture.ResizeMode.Zoom)
             picture.attemptMove(QgsLayoutPoint(x,y))
             picture.attemptResize(QgsLayoutSize(w,h))
             picture.setFrameEnabled(True)
@@ -265,12 +283,8 @@ def generate(layout, map_item, layer, width, height, margin, gap):
             picture.setBackgroundColor(QColor('white'))
             picture.setZValue(base_z+3)
             caption.setText(record[field_name(record, 'caption')].replace('[%', '[ %'))
-            fmt = QgsTextFormat()
-            fmt.setSize(9)
-            caption.setTextFormat(fmt)
-            caption.setHAlign(Qt.AlignHCenter)
-            caption.setVAlign(Qt.AlignVCenter)
-            caption.setMargin(0)
+            apply_caption(caption, caption_options)
+            caption.setVisibility(bool(caption.text()))
             caption.attemptMove(QgsLayoutPoint(x,y+h))
             caption.attemptResize(QgsLayoutSize(w,caption_height(caption,w)))
             caption.setZValue(base_z+3)
@@ -290,32 +304,27 @@ def generate(layout, map_item, layer, width, height, margin, gap):
 
 
 class LayoutPhotosDialog(QDialog):
-    def __init__(self, plugin):
-        super().__init__(plugin.iface.mainWindow())
+    def __init__(self, plugin, layout, parent):
+        super().__init__(parent)
         self.plugin = plugin
         self.setWindowTitle(tr('Foto nel layout — genera / aggiorna'))
         self.resize(610, 400)
         outer = QVBoxLayout(self)
-        notice = QLabel(tr('Le dimensioni massime rispettano le proporzioni di ciascuna foto.\n'
-            'Genera immagini locali, codici e linee per i punti nell’inquadratura.\n'
-            'Sposta e ridimensiona le foto liberamente, anche sopra altri elementi.\n'
-            'Salva posizione e dimensioni nel layer; compila Didascalia in tabella.\n'
-            'Dopo modifiche a mappa, punti o foto, esegui nuovamente il comando.'), self)
+        notice = QLabel(tr('Generate / Update refreshes photos, captions and leaders while keeping existing frames.\n'
+                        'Size and spacing below apply to new frames without a saved position.\n'
+                        'Save frame positions to layer creates a backup for rebuilding missing frames.'), self)
         notice.setWordWrap(True)
         outer.addWidget(notice)
         form = QFormLayout()
-        self.layouts = QComboBox(self)
         self.maps = QComboBox(self)
         self.layers = QComboBox(self)
-        self.layout_objects = QgsProject.instance().layoutManager().printLayouts()
-        for layout in self.layout_objects:
-            self.layouts.addItem(layout.name())
+        self.layout = layout
         for layer in QgsProject.instance().mapLayers().values():
             if compatible(layer):
                 self.layers.addItem(layer.name(),layer.id())
                 if layer is plugin.iface.activeLayer():
                     self.layers.setCurrentIndex(self.layers.count()-1)
-        form.addRow('Layout:',self.layouts)
+        form.addRow(tr('Layout:'), QLabel(layout.name(), self))
         form.addRow(tr('Mappa:'),self.maps)
         form.addRow(tr('Layer prese:'),self.layers)
         self.width = self.spin(38,1,1000)
@@ -326,18 +335,35 @@ class LayoutPhotosDialog(QDialog):
                             (tr('Margine iniziale pagina (mm):'),self.margin),(tr('Distanza iniziale fra foto (mm):'),self.gap)]:
             form.addRow(name,widget)
         outer.addLayout(form)
-        save = QPushButton(tr('Salva posizioni e dimensioni (pf_x, pf_y, dimX, dimY)'),self)
+        self.caption_controls = CaptionControls(self)
+        outer.addWidget(self.caption_controls)
+        save = QPushButton(tr('Save frame positions and sizes to layer'),self)
         save.clicked.connect(self.save_current_positions)
         outer.addWidget(save)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel,self)
-        buttons.button(QDialogButtonBox.Ok).setText('OK')
-        buttons.button(QDialogButtonBox.Cancel).setText('Cancel')
-        buttons.button(QDialogButtonBox.Ok).setText(tr('Genera / aggiorna'))
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,self)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr('OK'))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr('Cancel'))
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr('Genera / aggiorna'))
         buttons.accepted.connect(self.build)
         buttons.rejected.connect(self.reject)
         outer.addWidget(buttons)
-        self.layouts.currentIndexChanged.connect(self.populate_maps)
+        self.maps.currentIndexChanged.connect(self.load_caption_options)
+        self.layers.currentIndexChanged.connect(self.load_caption_options)
         self.populate_maps()
+        self.load_caption_options()
+
+    def load_caption_options(self, *args):
+        layer = QgsProject.instance().mapLayer(self.layers.currentData() or '')
+        options = {}
+        index = self.maps.currentIndex()
+        if layer and index >= 0:
+            key = 'prese_fotografiche/caption_options/' + layer.id()
+            raw = self.map_objects[index].customProperty(key, '{}')
+            try:
+                options = json.loads(raw)
+            except (TypeError, ValueError):
+                options = {}
+        self.caption_controls.load(layer, options if isinstance(options, dict) else {})
 
     def spin(self,value,minimum,maximum):
         spin = QDoubleSpinBox(self)
@@ -348,32 +374,29 @@ class LayoutPhotosDialog(QDialog):
     def populate_maps(self, *args):
         self.maps.clear()
         self.map_objects = []
-        index = self.layouts.currentIndex()
-        if index < 0:
-            return
-        layout = self.layout_objects[index]
-        self.map_objects = sorted([i for i in layout.items() if isinstance(i,QgsLayoutItemMap)],key=lambda i:i.id())
+        self.map_objects = sorted([i for i in self.layout.items() if isinstance(i,QgsLayoutItemMap)],key=lambda i:i.id())
         for i,item in enumerate(self.map_objects):
             self.maps.addItem(tr('%s — pagina %d') % (item.id() or tr('Mappa %d') % (i+1),item.page()+1))
 
     def build(self):
-        if self.layouts.currentIndex()<0 or self.maps.currentIndex()<0 or self.layers.currentIndex()<0:
+        if self.maps.currentIndex()<0 or self.layers.currentIndex()<0:
             QMessageBox.warning(self,tr('Foto nel layout'),tr('Crea prima un layout con una mappa e un layer prese con campi codice e photo.'))
             return
-        layout = self.layout_objects[self.layouts.currentIndex()]
+        layout = self.layout
         map_item = self.map_objects[self.maps.currentIndex()]
         layer = QgsProject.instance().mapLayer(self.layers.currentData())
+        options = self.caption_controls.values()
         try:
-            count,skipped = generate(layout,map_item,layer,self.width.value(),self.height.value(),self.margin.value(),self.gap.value())
+            count,skipped = generate(layout,map_item,layer,self.width.value(),self.height.value(),self.margin.value(),self.gap.value(),options)
+            map_item.setCustomProperty('prese_fotografiche/caption_options/' + layer.id(), json.dumps(options))
         except Exception as error:
             QMessageBox.warning(self,tr('Foto nel layout'),tr('Generazione non completata:\n')+str(error))
             return
-        self.plugin.iface.openLayoutDesigner(layout)
         text = tr('%d foto generate. Salva il progetto.\nRiesegui il comando dopo modifiche alla mappa.') % count
         page=layout.pageCollection().page(map_item.page())
         page_rect=page.mapRectToScene(page.rect())
         if any(not page_rect.contains(i.mapRectToScene(i.rect())) for i in layout.items()
-            if isinstance(i,QgsLayoutItemPicture) and i.customProperty(TAG,'')==map_item.uuid()):
+            if isinstance(i,QgsLayoutItemPicture) and i.customProperty(TAG,'')==map_item.uuid() and i.customProperty(LAYER,'')==layer.id()):
             text+=tr('\nAlcune foto sono oltre i bordi della pagina: riposizionale prima di esportare.')
         if skipped:
             text += tr('\n\nPrese escluse (%d):\n%s') % (len(skipped),'\n'.join(skipped[:12]))
@@ -381,9 +404,9 @@ class LayoutPhotosDialog(QDialog):
         self.accept()
 
     def save_current_positions(self):
-        if self.layouts.currentIndex()<0 or self.maps.currentIndex()<0 or self.layers.currentIndex()<0:
+        if self.maps.currentIndex()<0 or self.layers.currentIndex()<0:
             return
-        layout = self.layout_objects[self.layouts.currentIndex()]
+        layout = self.layout
         map_item = self.map_objects[self.maps.currentIndex()]
         layer = QgsProject.instance().mapLayer(self.layers.currentData())
         try:

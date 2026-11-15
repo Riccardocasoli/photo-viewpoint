@@ -1,3 +1,43 @@
+# 0.7.6 (experimental)
+
+- Follow the QGIS interface language for plugin commands and dialogs, with an English fallback.
+- Embed icons and localized screenshots in both HTML manuals.
+
+# 0.7.5 (experimental)
+
+- Place Layout Photos before Close in the layout menu.
+- Clarify the layer creation command.
+- Add original button icons, dialog screenshots and two separate animated workflow guides to the bilingual documentation.
+
+# 0.7.4 (experimental)
+
+- Preview local photos on hover without activating a map tool.
+- Temporarily suspend the active photo layer’s native tips while the thumbnail is displayed.
+- Use standard designer menu and toolbar, with a fallback in the main plugin menu.
+
+# 0.7.3 (experimental)
+
+- Keep the photo thumbnail visible while the pointer remains over the same viewpoint.
+- Add Layout Photos to the print-layout menu and display the toolbar when supported.
+
+# 0.7.2 (experimental)
+
+- Preserve live photo frame positions and sizes on update, with layer fields as a fallback for missing frames.
+- Refresh only the selected map and layer.
+- Open Layout Photos from the print layout toolbar.
+
+# 0.7.1 (experimental)
+
+- Hover photo tips while the Photo preview tool is active.
+- Select and order caption fields, set typography, alignment and background opacity.
+- Remember caption settings per layout map and viewpoint layer.
+
+# 0.7.0 (experimental)
+
+- Adapt Qt bindings for QGIS 4 while retaining QGIS 3.
+- Preserve field names in SQLite exports.
+- Add a shared desktop smoke test runner.
+
 # 0.6.1
 
 Preserve case-sensitive QGIS metadata keys and use Riccardo Casoli as author.

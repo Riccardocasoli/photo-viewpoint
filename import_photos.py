@@ -59,16 +59,16 @@ class ImportPhotosDialog(QDialog):
             position=gps_position(metadata)
             bearing=grid_azimuth(layer,metadata)
             self.records.append({'path':path,'metadata':metadata,'azimuth':bearing})
-            check=QTableWidgetItem();check.setFlags(Qt.ItemIsEnabled|Qt.ItemIsUserCheckable);check.setCheckState(Qt.Checked)
+            check=QTableWidgetItem();check.setFlags(Qt.ItemFlag.ItemIsEnabled|Qt.ItemFlag.ItemIsUserCheckable);check.setCheckState(Qt.CheckState.Checked)
             self.table.setItem(row,0,check)
-            name=QTableWidgetItem(Path(path).name);name.setToolTip(path);name.setFlags(Qt.ItemIsEnabled)
+            name=QTableWidgetItem(Path(path).name);name.setToolTip(path);name.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.table.setItem(row,1,name)
-            status=QTableWidgetItem(tr('GPS available') if position else tr('Needs manual position')+' — '+str(metadata['exif_stat']))
-            status.setFlags(Qt.ItemIsEnabled)
+            status=QTableWidgetItem(tr('GPS available') if position else tr('Needs manual position')+' — '+tr(str(metadata['exif_stat'])))
+            status.setFlags(Qt.ItemFlag.ItemIsEnabled)
             if not position:status.setForeground(QColor('#bd3e23'))
             self.table.setItem(row,2,status)
             value=QTableWidgetItem('%.1f°'%bearing if bearing is not None else tr('Default'))
-            value.setFlags(Qt.ItemIsEnabled);self.table.setItem(row,3,value)
+            value.setFlags(Qt.ItemFlag.ItemIsEnabled);self.table.setItem(row,3,value)
         self.table.resizeColumnsToContents();self.table.horizontalHeader().setStretchLastSection(True)
         outer.addWidget(self.table)
         drop=QPushButton(tr('Exclude all images without GPS'),self);drop.clicked.connect(self.exclude_pending);outer.addWidget(drop)
@@ -82,9 +82,9 @@ class ImportPhotosDialog(QDialog):
         outer.addLayout(form)
         note=QLabel(tr('Only true-north EXIF direction can be converted to the layer grid bearing. Magnetic or missing direction uses the default. FOV and graphic length use the defaults.'),self)
         note.setWordWrap(True);outer.addWidget(note)
-        buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel,self)
-        buttons.button(QDialogButtonBox.Ok).setText('OK')
-        buttons.button(QDialogButtonBox.Cancel).setText('Cancel')
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel,self)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr('OK'))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr('Cancel'))
         buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject);outer.addWidget(buttons)
 
     def spin(self,value,low,high):
@@ -92,10 +92,10 @@ class ImportPhotosDialog(QDialog):
 
     def exclude_pending(self):
         for row,record in enumerate(self.records):
-            if gps_position(record['metadata']) is None:self.table.item(row,0).setCheckState(Qt.Unchecked)
+            if gps_position(record['metadata']) is None:self.table.item(row,0).setCheckState(Qt.CheckState.Unchecked)
 
     def values(self):
-        records=[r for row,r in enumerate(self.records) if self.table.item(row,0).checkState()==Qt.Checked]
+        records=[r for row,r in enumerate(self.records) if self.table.item(row,0).checkState()==Qt.CheckState.Checked]
         return records,{'azimuth':self.azimuth.value(),'fov':self.fov.value(),'distance':self.distance.value()}
 
 
@@ -109,7 +109,7 @@ class PendingPhotosDock(QDockWidget):
         label=QLabel(tr('These records have no geometry. Select an image, then Place on map and click its position. No artificial coordinates are assigned.'),widget)
         label.setWordWrap(True);outer.addWidget(label)
         self.list=QListWidget(widget);outer.addWidget(self.list)
-        for title,callback in [('Place on map',self.place),('Delete selected record',self.delete),('Refresh list',self.refresh)]:
+        for title,callback in [(tr('Place on map'),self.place),(tr('Delete selected record'),self.delete),(tr('Refresh list'),self.refresh)]:
             button=QPushButton(tr(title),widget);button.clicked.connect(callback);outer.addWidget(button)
         self.setWidget(widget)
 
@@ -124,12 +124,12 @@ class PendingPhotosDock(QDockWidget):
             for feature in self.layer.getFeatures():
                 if feature.geometry().isEmpty():
                     item=QListWidgetItem(str(feature[field_name(feature, 'code')])+' — '+Path(str(feature['photo'])).name)
-                    item.setData(Qt.UserRole,feature.id());item.setToolTip(str(feature['photo']));self.list.addItem(item)
+                    item.setData(Qt.ItemDataRole.UserRole,feature.id());item.setToolTip(str(feature['photo']));self.list.addItem(item)
         except RuntimeError:self.layer=None
 
     def selected_fid(self):
         item=self.list.currentItem()
-        return item.data(Qt.UserRole) if item else None
+        return item.data(Qt.ItemDataRole.UserRole) if item else None
 
     def place(self):
         fid=self.selected_fid()
@@ -145,7 +145,7 @@ class PendingPhotosDock(QDockWidget):
     def delete(self):
         fid=self.selected_fid()
         if fid is None:return
-        if QMessageBox.question(self,tr('Photos to position'),tr('Delete this layer record? The image file will not be deleted.'),QMessageBox.Yes|QMessageBox.No)!=QMessageBox.Yes:return
+        if QMessageBox.question(self,tr('Photos to position'),tr('Delete this layer record? The image file will not be deleted.'),QMessageBox.StandardButton.Yes|QMessageBox.StandardButton.No)!=QMessageBox.StandardButton.Yes:return
         try:
             layer=self.layer
             if layer.readOnly() or (not layer.isEditable() and not layer.startEditing()):raise ValueError(tr('The layer cannot be edited.'))
@@ -160,13 +160,13 @@ class PlacePendingTool(QgsMapTool):
     def __init__(self,plugin,layer,fid,dock):
         super().__init__(plugin.canvas)
         self.plugin,self.layer,self.fid,self.dock=plugin,layer,fid,dock
-        self.setCursor(Qt.CrossCursor)
+        self.setCursor(Qt.CursorShape.CrossCursor)
         layer.willBeDeleted.connect(self.deleted)
 
     def deleted(self):self.plugin.stop()
 
     def canvasReleaseEvent(self,event):
-        if event.button()!=Qt.LeftButton:return
+        if event.button()!=Qt.MouseButton.LeftButton:return
         try:
             feature=self.layer.getFeature(self.fid)
             if not feature.isValid() or not feature.geometry().isEmpty():
@@ -182,7 +182,7 @@ class PlacePendingTool(QgsMapTool):
         except (ValueError,RuntimeError) as error:self.plugin.message(str(error),True)
 
     def keyPressEvent(self,event):
-        if event.key()==Qt.Key_Escape:self.plugin.stop()
+        if event.key()==Qt.Key.Key_Escape:self.plugin.stop()
 
     def deactivate(self):
         self.plugin.iface.statusBarIface().clearMessage();super().deactivate()

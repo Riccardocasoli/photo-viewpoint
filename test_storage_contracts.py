@@ -39,7 +39,9 @@ class StorageContracts(unittest.TestCase):
             def fields(self):return Fields()
         class Options:pass
         class Writer:
-            SaveVectorOptions=Options;CreateOrOverwriteFile=0;NoError=0
+            SaveVectorOptions=Options
+            class ActionOnExistingFile: CreateOrOverwriteFile=0
+            class WriterError: NoError=0
             @staticmethod
             def writeAsVectorFormatV3(source,path,context,options):return 0,'',path,'laundered_name'
         class Project:

@@ -4,12 +4,18 @@ from .schema import configure_table, caption_length
 from .i18n import tr
 import math
 from pathlib import Path
-from qgis.PyQt.QtCore import Qt, QVariant
-from qgis.PyQt.QtGui import QColor, QIcon
-from qgis.PyQt.QtWidgets import QAction, QDialog, QFileDialog, QMessageBox
+from .compat import FIELD_STRING, FIELD_DOUBLE
+from .compat import WKB_POINT
+from .compat import GEOMETRY_LINE
+from .compat import DISTANCE_METRES
+from .compat import mouse_position
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QColor, QIcon, QKeySequence
+from .compat import QAction
+from qgis.PyQt.QtWidgets import QDialog, QFileDialog, QMessageBox, QInputDialog
 from qgis.core import (
     Qgis, QgsProject, QgsVectorLayer, QgsField, QgsFeature, QgsGeometry,
-    QgsPointXY, QgsWkbTypes, QgsUnitTypes, QgsMarkerSymbol, QgsLineSymbol,
+    QgsPointXY, QgsMarkerSymbol, QgsLineSymbol,
     QgsGeometryGeneratorSymbolLayer, QgsSingleSymbolRenderer,
     QgsPalLayerSettings, QgsTextFormat, QgsTextBufferSettings,
     QgsVectorLayerSimpleLabeling, QgsFeatureRequest, QgsRectangle, QgsVectorFileWriter,
@@ -17,15 +23,15 @@ from qgis.core import (
 from qgis.gui import QgsMapTool, QgsRubberBand, QgsVertexMarker, QgsProjectionSelectionDialog
 from .geometry_utils import direction, aperture, endpoint, valid_fov
 from .photo_dialog import PhotoDialog
-from .photo_preview import PreviewTool
-from .create_layer_dialog import CreateLayerDialog, write_dataset
+from .photo_preview import PreviewTool, PhotoHover
+from .create_layer_dialog import CreateLayerDialog, create_layer_title, write_dataset
 from .photo_metadata import METADATA_FIELDS, add_metadata_fields, photo_metadata, configure_tracking
 from .import_utils import gps_distance
 
 
-FIELDS = {'code': QVariant.String, 'azimuth': QVariant.Double,
-          'fov': QVariant.Double, 'distance': QVariant.Double,
-          'photo': QVariant.String, 'note': QVariant.String}
+FIELDS = {'code': FIELD_STRING, 'azimuth': FIELD_DOUBLE,
+          'fov': FIELD_DOUBLE, 'distance': FIELD_DOUBLE,
+          'photo': FIELD_STRING, 'note': FIELD_STRING}
 EXPRESSION = '''collect_geometries(
  make_line($geometry, project($geometry, "distance", radians("azimuth"-"fov"/2.0))),
  make_line($geometry, project($geometry, "distance", radians("azimuth"+"fov"/2.0))))'''
@@ -37,21 +43,21 @@ class PhotoPlugin:
         self.canvas = iface.mapCanvas()
         self.tool = None
         self.actions = []
+        self.layout_toolbars = {}
         self.pending_dock = None
 
     def initGui(self):
         self.toolbar = self.iface.addToolBar(tr('Prese fotografiche'))
         self.toolbar.setObjectName('PreseFotograficheToolbar')
-        self.toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
+        self.toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         for text, icon, callback in [
-            (tr('Crea layer foto'), 'layer.svg', self.create_layer),
+            (create_layer_title(), 'layer.svg', self.create_layer),
             (tr('Create viewpoint then link photo'), 'point_to_photo.svg', lambda: self.activate(False)),
             (tr('Create viewpoints from photos'), 'photo_to_point.svg', self.import_photos),
             (tr('Photos to position'), 'pending.svg', self.show_pending),
             (tr('Modifica presa'), 'edit.svg', lambda: self.activate(True)),
-            (tr('Visualizza foto'), 'preview.svg', self.activate_preview),
-            ('Apply viewpoint style', 'style.svg', self.apply_style),
-            (tr('Foto nel layout'), 'layout.svg', self.layout_photos),
+            (tr('Open photo preview (click a viewpoint)'), 'preview.svg', self.activate_preview),
+            (tr('Apply viewpoint style'), 'style.svg', self.apply_style),
             (tr('Read photo metadata'), 'metadata.svg', self.read_metadata),
         ]:
             action = QAction(QIcon(str(Path(__file__).parent / 'icons' / icon)), text, self.iface.mainWindow())
@@ -63,9 +69,25 @@ class PhotoPlugin:
             self.actions.append(action)
         QgsProject.instance().readProject.connect(self.restore_layout_links)
         self.restore_layout_links()
+        self.photo_hover = PhotoHover(self)
+        self.iface.currentLayerChanged.connect(self.photo_hover.clear_tip)
+        fallback = QAction(tr('Layout Photos…'), self.iface.mainWindow())
+        fallback.triggered.connect(self.open_layout_photos)
+        self.iface.addPluginToMenu(tr('Prese fotografiche'), fallback)
+        self.actions.append(fallback)
+        self.iface.layoutDesignerOpened.connect(self.add_layout_toolbar)
+        self.iface.layoutDesignerWillBeClosed.connect(self.remove_layout_toolbar)
+        for designer in self.iface.openLayoutDesigners():
+            self.add_layout_toolbar(designer)
 
     def unload(self):
         self.stop()
+        self.iface.currentLayerChanged.disconnect(self.photo_hover.clear_tip)
+        self.photo_hover.dispose()
+        self.iface.layoutDesignerOpened.disconnect(self.add_layout_toolbar)
+        self.iface.layoutDesignerWillBeClosed.disconnect(self.remove_layout_toolbar)
+        for designer in list(self.layout_toolbars):
+            self.remove_layout_toolbar(designer)
         if self.pending_dock is not None:
             self.iface.removeDockWidget(self.pending_dock)
             self.pending_dock.deleteLater()
@@ -75,9 +97,63 @@ class PhotoPlugin:
             self.iface.removePluginMenu(tr('Prese fotografiche'), action)
         self.toolbar.deleteLater()
 
-    def layout_photos(self):
+    def add_layout_toolbar(self, designer):
+        if designer in self.layout_toolbars:
+            return
+        # Use the designer API directly: designer.layout() can be exposed
+        # as a base QgsLayout wrapper, even for an ordinary print layout.
+        menu, toolbar = designer.layoutMenu(), designer.layoutToolbar()
+        if menu is None and toolbar is None:
+            return
+        action = QAction(QIcon(str(Path(__file__).parent / 'icons' / 'layout.svg')),
+                         tr('Layout Photos'), designer.window())
+        action.triggered.connect(lambda checked=False: self.layout_photos(designer))
+        if menu is not None:
+            close_keys = QKeySequence.keyBindings(QKeySequence.StandardKey.Close)
+            close_action = next((entry for entry in menu.actions()
+                                 if 'close' in entry.objectName().lower()
+                                 or any(key in close_keys for key in entry.shortcuts())
+                                 or entry.text().replace('&', '').strip().casefold() in ('close', 'chiudi')), None)
+            if close_action is not None:
+                menu.insertAction(close_action, action)
+            else:
+                menu.addAction(action)
+        if toolbar is not None:
+            toolbar.addAction(action)
+        self.layout_toolbars[designer] = (menu, action, toolbar)
+
+    def remove_layout_toolbar(self, designer):
+        entry = self.layout_toolbars.pop(designer, None)
+        if entry is not None:
+            menu, action, toolbar = entry
+            for container in (menu, toolbar):
+                if container is not None:
+                    container.removeAction(action)
+            action.deleteLater()
+
+    def open_layout_photos(self):
+        layouts = QgsProject.instance().layoutManager().printLayouts()
+        if not layouts:
+            self.message(tr('Create a print layout first.'), True)
+            return
+        names = [layout.name() for layout in layouts]
+        name, accepted = (names[0], True) if len(names) == 1 else QInputDialog.getItem(
+            self.iface.mainWindow(), tr('Layout Photos'), tr('Print layout:'), names, 0, False)
+        if accepted:
+            designer = self.iface.openLayoutDesigner(layouts[names.index(name)])
+            if designer is not None:
+                self.layout_photos(designer)
+
+    def layout_photos(self, designer):
         from .layout_photos import LayoutPhotosDialog
-        LayoutPhotosDialog(self).exec()
+        layout = designer.masterLayout()
+        from qgis.core import QgsPrintLayout
+        if not isinstance(layout, QgsPrintLayout):
+            layout = designer.layout()
+        if layout is not None and hasattr(layout, 'atlas') and hasattr(layout, 'name'):
+            LayoutPhotosDialog(self, layout, designer.window()).exec()
+        else:
+            self.message(tr('Layout Photos requires a print layout.'), True)
 
     def restore_layout_links(self, *args):
         from .layout_photos import restore_links
@@ -93,7 +169,7 @@ class PhotoPlugin:
             if self.pending_dock is None:
                 from .import_photos import PendingPhotosDock
                 self.pending_dock=PendingPhotosDock(self)
-                self.iface.addDockWidget(Qt.RightDockWidgetArea,self.pending_dock)
+                self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,self.pending_dock)
             self.pending_dock.bind(layer)
         except ValueError as error:self.message(str(error),True)
 
@@ -106,7 +182,7 @@ class PhotoPlugin:
             if not paths:return
             from .import_photos import ImportPhotosDialog,import_records
             dialog=ImportPhotosDialog(self,layer,list(dict.fromkeys(paths)))
-            if dialog.exec()!=QDialog.Accepted:return
+            if dialog.exec()!=QDialog.DialogCode.Accepted:return
             records,defaults=dialog.values()
             if not records:return
             count,pending=import_records(layer,records,defaults)
@@ -116,7 +192,7 @@ class PhotoPlugin:
 
     def message(self, text, warning=False):
         self.iface.messageBar().pushMessage(tr('Prese fotografiche'), text,
-            level=Qgis.Warning if warning else Qgis.Info, duration=6)
+            level=Qgis.MessageLevel.Warning if warning else Qgis.MessageLevel.Info, duration=6)
 
     def stop(self):
         if self.tool:
@@ -126,34 +202,34 @@ class PhotoPlugin:
 
     def layer(self):
         layer = self.iface.activeLayer()
-        if not isinstance(layer, QgsVectorLayer) or layer.wkbType() != QgsWkbTypes.Point:
+        if not isinstance(layer, QgsVectorLayer) or layer.wkbType() != WKB_POINT:
             raise ValueError(tr('Seleziona un layer Point semplice (senza Z/M).'))
         crs = layer.crs()
-        if not crs.isValid() or crs.isGeographic() or crs.mapUnits() != QgsUnitTypes.DistanceMeters:
+        if not crs.isValid() or crs.isGeographic() or crs.mapUnits() != DISTANCE_METRES:
             raise ValueError(tr('Il layer deve avere un CRS proiettato con unità in metri.'))
         missing = [name for name in FIELDS if layer.fields().indexFromName(field_name(layer,name)) < 0]
         if missing:
             raise ValueError(tr('Campi mancanti: ') + ', '.join(missing) + tr('. Usa Crea layer foto.'))
-        if layer.fields().field(field_name(layer,'code')).type() != QVariant.String:
+        if layer.fields().field(field_name(layer,'code')).type() != FIELD_STRING:
             raise ValueError(tr('Il campo codice deve essere di tipo Testo.'))
         for name in ('azimuth', 'fov', 'distance'):
-            if layer.fields().field(name).type() != QVariant.Double:
+            if layer.fields().field(name).type() != FIELD_DOUBLE:
                 raise ValueError(tr('Il campo ') + name + tr(' deve essere di tipo Decimale/Double.'))
         return layer
 
     def create_layer(self):
         dialog = CreateLayerDialog(self.iface.mainWindow())
-        if dialog.exec()!=QDialog.Accepted:
+        if dialog.exec()!=QDialog.DialogCode.Accepted:
             return
         name,crs,driver,path=dialog.values()
         layer = QgsVectorLayer('Point', name, 'memory')
         layer.setCrs(crs)
-        all_fields={'code':QVariant.String,'caption':QVariant.String,'distGPS':QVariant.Double,
-            **{n:k for n,k in FIELDS.items() if n!='code'},**METADATA_FIELDS,'vp_status':QVariant.String}
+        all_fields={'code':FIELD_STRING,'caption':FIELD_STRING,'distGPS':FIELD_DOUBLE,
+            **{n:k for n,k in FIELDS.items() if n!='code'},**METADATA_FIELDS,'vp_status':FIELD_STRING}
         fields=[]
         for field_name,kind in all_fields.items():
             length=caption_length(driver) if field_name=='caption' else 254
-            fields.append(QgsField(field_name,kind,len=length) if kind==QVariant.String else QgsField(field_name,kind,len=24,prec=10))
+            fields.append(QgsField(field_name,kind,len=length) if kind==FIELD_STRING else QgsField(field_name,kind,len=24,prec=10))
         if not layer.dataProvider().addAttributes(fields):
             self.message(tr('Cannot create layer fields.'),True);return
         layer.updateFields()
@@ -172,7 +248,7 @@ class PhotoPlugin:
             try:
                 from .viewpoint_styles import save_portable_style
                 self.message(status+' | '+' | '.join(save_portable_style(layer)))
-            except Exception as error:self.message(status+' Style save failed: '+str(error),True)
+            except Exception as error:self.message(status+tr(' Style save failed: ')+str(error),True)
         else:self.message(status)
 
     def style(self, layer):
@@ -184,14 +260,14 @@ class PhotoPlugin:
             layer=self.layer()
             from .viewpoint_styles import StyleDialog,apply_style,save_portable_style
             dialog=StyleDialog(self.iface.mainWindow(),layer,lambda:self.english_copy(layer))
-            if dialog.exec()!=QDialog.Accepted:return
+            if dialog.exec()!=QDialog.DialogCode.Accepted:return
             apply_style(layer,dialog.preset.currentData(),dialog.size.value(),dialog.labels.isChecked())
             if dialog.persist.isChecked():self.message(' | '.join(save_portable_style(layer)))
         except Exception as error:
             self.message(str(error), True)
 
     def english_copy(self,layer):
-        filename,_=QFileDialog.getSaveFileName(self.iface.mainWindow(),'Create English-field GeoPackage copy',QgsProject.instance().homePath(),'GeoPackage (*.gpkg)')
+        filename,_=QFileDialog.getSaveFileName(self.iface.mainWindow(),tr('Create English-field GeoPackage copy'),QgsProject.instance().homePath(),'GeoPackage (*.gpkg)')
         if not filename:return
         if not filename.lower().endswith('.gpkg'):filename+='.gpkg'
         try:
@@ -201,7 +277,7 @@ class PhotoPlugin:
             apply_style(copy,layer.customProperty('photo_viewpoint/preset','classic'),float(layer.customProperty('photo_viewpoint/size',4)),layer.labelsEnabled())
             QgsProject.instance().addMapLayer(copy)
             save_portable_style(copy)
-            QMessageBox.information(self.iface.mainWindow(),'English-field copy','Copy created. The original layer is unchanged. Select the copy to use it; regenerate layout photo links for the new layer.')
+            QMessageBox.information(self.iface.mainWindow(),tr('English-field copy'),tr('Copy created. The original layer is unchanged. Select the copy to use it; regenerate layout photo links for the new layer.'))
         except Exception as error:self.message(str(error),True)
 
     def activate(self, editing):
@@ -222,7 +298,7 @@ class PhotoPlugin:
             self.stop()
             self.tool = PreviewTool(self, layer)
             self.canvas.setMapTool(self.tool)
-            self.iface.statusBarIface().showMessage(tr('Visualizza foto: clicca sul punto di presa.'))
+            self.iface.statusBarIface().showMessage(tr('Hover over a viewpoint for a thumbnail; click to open the photo.'))
         except ValueError as error:
             self.message(str(error), True)
 
@@ -232,7 +308,7 @@ class PhotoPlugin:
         while 'F%03d' % n in used:
             n += 1
         dialog = PhotoDialog(self.iface.mainWindow(), 'F%03d' % n, used)
-        if dialog.exec() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return None
         return dialog.values()
 
@@ -289,10 +365,10 @@ class PhotoTool(QgsMapTool):
         self.drag = None
         self.backup = None
         self.markers = []
-        self.rubber = QgsRubberBand(self.canvas(), QgsWkbTypes.LineGeometry)
+        self.rubber = QgsRubberBand(self.canvas(), GEOMETRY_LINE)
         self.rubber.setColor(QColor(35, 125, 210))
         self.rubber.setWidth(2)
-        self.setCursor(Qt.CrossCursor)
+        self.setCursor(Qt.CursorShape.CrossCursor)
         layer.willBeDeleted.connect(self.layer_deleted)
         layer.editingStopped.connect(self.editing_stopped)
         self.canvas().destinationCrsChanged.connect(self.refresh)
@@ -324,7 +400,7 @@ class PhotoTool(QgsMapTool):
 
     def screen_distance(self, event, p):
         pixel = self.toCanvasCoordinates(self.map_point(p))
-        return math.hypot(pixel.x() - event.pos().x(), pixel.y() - event.pos().y())
+        return math.hypot(pixel.x() - mouse_position(event).x(), pixel.y() - mouse_position(event).y())
 
     def handles(self):
         s = self.state
@@ -338,7 +414,7 @@ class PhotoTool(QgsMapTool):
 
     def draw(self):
         self.clear_markers()
-        self.rubber.reset(QgsWkbTypes.LineGeometry)
+        self.rubber.reset(GEOMETRY_LINE)
         if not self.state:
             return
         s = self.state
@@ -351,7 +427,7 @@ class PhotoTool(QgsMapTool):
         for i, p in enumerate(points):
             marker = QgsVertexMarker(self.canvas())
             marker.setCenter(self.map_point(p))
-            marker.setIconType(QgsVertexMarker.ICON_BOX if i else QgsVertexMarker.ICON_CIRCLE)
+            marker.setIconType(QgsVertexMarker.IconType.ICON_BOX if i else QgsVertexMarker.IconType.ICON_CIRCLE)
             marker.setIconSize(10)
             marker.setColor(QColor('blue'))
             marker.setPenWidth(2)
@@ -368,7 +444,7 @@ class PhotoTool(QgsMapTool):
         self.hint()
 
     def canvasPressEvent(self, event):
-        if not self.editing or event.button() != Qt.LeftButton:
+        if not self.editing or event.button() != Qt.MouseButton.LeftButton:
             return
         if self.state:
             distances = [self.screen_distance(event, p) for p in self.handles()]
@@ -381,7 +457,7 @@ class PhotoTool(QgsMapTool):
 
     def pick(self, event):
         # Filter in layer coordinates, then choose within 12 screen pixels.
-        pos = event.pos()
+        pos = mouse_position(event)
         transform = self.canvas().getCoordinateTransform()
         corners = [self.toLayerCoordinates(self.layer, transform.toMapCoordinates(x, y))
                    for x, y in [(pos.x()-12, pos.y()-12), (pos.x()+12, pos.y()-12),
@@ -432,7 +508,7 @@ class PhotoTool(QgsMapTool):
             logging.getLogger(__name__).debug('Optional operation could not complete', exc_info=True)
 
     def canvasReleaseEvent(self, event):
-        if event.button() != Qt.LeftButton:
+        if event.button() != Qt.MouseButton.LeftButton:
             return
         if self.editing:
             if self.drag is not None:
@@ -515,14 +591,14 @@ class PhotoTool(QgsMapTool):
         self.layer.triggerRepaint()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
+        if event.key() == Qt.Key.Key_Escape:
             if self.drag is not None:
                 self.state = self.backup
                 self.drag, self.backup = None, None
                 self.draw()
             else:
                 self.reset()
-        elif event.key() == Qt.Key_Backspace and not self.editing and self.stage:
+        elif event.key() == Qt.Key.Key_Backspace and not self.editing and self.stage:
             self.stage -= 1
             if self.stage == 0:
                 self.reset()

@@ -1,10 +1,11 @@
 """Layer creation with an explicit CRS and a new dataset or temporary storage."""
 from .i18n import tr
 from pathlib import Path
+from .compat import DISTANCE_METRES
 from qgis.PyQt.QtCore import QStandardPaths
 from qgis.PyQt.QtWidgets import (QDialog,QVBoxLayout,QFormLayout,QComboBox,QLineEdit,
  QPushButton,QHBoxLayout,QWidget,QDialogButtonBox,QFileDialog,QMessageBox)
-from qgis.core import QgsProject,QgsVectorFileWriter,QgsUnitTypes,QgsVectorLayer
+from qgis.core import QgsProject,QgsVectorFileWriter,QgsVectorLayer
 from qgis.gui import QgsProjectionSelectionWidget
 
 FORMATS=[('GeoPackage','GPKG','.gpkg'),('ESRI Shapefile','ESRI Shapefile','.shp'),
@@ -22,9 +23,10 @@ def write_dataset(source,name,driver,path):
     options.driverName=driver
     options.fileEncoding='UTF-8'
     options.layerName=name
-    options.actionOnExistingFile=QgsVectorFileWriter.CreateOrOverwriteFile
+    if driver=='SQLite':options.layerOptions=['LAUNDER=NO']
+    options.actionOnExistingFile=QgsVectorFileWriter.ActionOnExistingFile.CreateOrOverwriteFile
     result=QgsVectorFileWriter.writeAsVectorFormatV3(source,str(path),QgsProject.instance().transformContext(),options)
-    if result[0]!=QgsVectorFileWriter.NoError:
+    if result[0]!=QgsVectorFileWriter.WriterError.NoError:
         raise ValueError(str(result[1]))
     filename=result[2] or str(path)
     table=result[3] or name
@@ -32,14 +34,18 @@ def write_dataset(source,name,driver,path):
     layer=QgsVectorLayer(uri,name,'ogr')
     if not layer.isValid():raise ValueError(tr('The new dataset could not be opened: ')+filename)
     missing=[field.name() for field in source.fields() if layer.fields().indexFromName(field.name())<0]
-    if missing:raise ValueError('The output format did not preserve these fields: '+', '.join(missing))
+    if missing:raise ValueError(tr('The output format did not preserve these fields: ')+', '.join(missing))
     return layer
+
+
+def create_layer_title():
+    return tr('Create new Viewpoints layer')
 
 
 class CreateLayerDialog(QDialog):
     def __init__(self,parent):
         super().__init__(parent)
-        self.setWindowTitle(tr('Create photo viewpoint layer'))
+        self.setWindowTitle(create_layer_title())
         self.resize(600,260)
         outer=QVBoxLayout(self);form=QFormLayout()
         self.name=QLineEdit(tr('Photo viewpoint'),self)
@@ -52,7 +58,7 @@ class CreateLayerDialog(QDialog):
         self.crs.setCrs(QgsProject.instance().crs())
         project=QgsProject.instance()
         default=str(Path(project.fileName()).parent) if project.fileName() else project.homePath()
-        self.directory=QLineEdit(default or QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation),self)
+        self.directory=QLineEdit(default or QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation),self)
         browse=QPushButton(tr('Browse…'),self)
         browse.clicked.connect(self.browse)
         row=QWidget(self);h=QHBoxLayout(row);h.setContentsMargins(0,0,0,0)
@@ -63,9 +69,9 @@ class CreateLayerDialog(QDialog):
         form.addRow(tr('Coordinate reference system (metres):'),self.crs)
         form.addRow(tr('Directory:'),row)
         outer.addLayout(form)
-        buttons=QDialogButtonBox(QDialogButtonBox.Ok|QDialogButtonBox.Cancel,self)
-        buttons.button(QDialogButtonBox.Ok).setText('OK')
-        buttons.button(QDialogButtonBox.Cancel).setText('Cancel')
+        buttons=QDialogButtonBox(QDialogButtonBox.StandardButton.Ok|QDialogButtonBox.StandardButton.Cancel,self)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText(tr('OK'))
+        buttons.button(QDialogButtonBox.StandardButton.Cancel).setText(tr('Cancel'))
         buttons.accepted.connect(self.accept);buttons.rejected.connect(self.reject)
         outer.addWidget(buttons)
         self.format.currentIndexChanged.connect(self.update_storage)
@@ -88,7 +94,7 @@ class CreateLayerDialog(QDialog):
         name,crs,driver,path=self.values()
         if not name or any(c in name for c in '/\\:*?"<>|') or name in ('.','..'):
             QMessageBox.warning(self,tr('Photo viewpoint'),tr('Enter a valid layer and file name.'));return
-        if not crs.isValid() or crs.isGeographic() or crs.mapUnits()!=QgsUnitTypes.DistanceMeters:
+        if not crs.isValid() or crs.isGeographic() or crs.mapUnits()!=DISTANCE_METRES:
             QMessageBox.warning(self,tr('Photo viewpoint'),tr('Choose a projected CRS with metre units.'));return
         if path is not None:
             if not path.parent.is_dir():

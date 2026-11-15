@@ -1,15 +1,16 @@
 # Photo viewpoint — QGIS plugin
 
-**Experimental 0.6.1.** Create and edit photo viewpoints in three clicks, or import
+**Experimental 0.7.6.** Create and edit photo viewpoints in three clicks, or import
 photos using available EXIF GPS. Preview original images, track displacement from
 GPS and generate freely movable photo callouts in print layouts.
 
 - [Presentation and user manual — English](docs/manual-en.html)
 - [Presentazione e manuale — Italiano](docs/manual-it.html)
+- [Animated demonstrations / GIF](docs/demos/index.html)
 - [Static homepage source](docs/index.html)
 - [Publication handover](PUBLISHING.md)
 
-Open MANUALE.html in a browser to choose a manual. Both are printable. Earlier
+Open MANUALE.html in a browser to choose a manual. Both are printable and their images are embedded. The interface follows the QGIS language, with an English fallback. Earlier
 GUIDA_0_*.md files describe historical versions; the 0.6 manuals take precedence.
 
 ## What's new in 0.6
@@ -47,10 +48,17 @@ packages. No HEIC/RAW, MakerNotes, XMP-only GPS or network downloads. True-north
 image direction can be converted to grid bearing; magnetic/unknown direction uses
 the default. Missing values stay NULL. Originals are not modified or uploaded.
 
-For layouts, set maximum image dimensions, move/resize frames, add caption text,
-then save pf_x/pf_y/pf_map/dimX/dimY. Regenerate after changes to map extent,
-viewpoint geometry, image or caption. Static layouts in mm only; atlas and
-arbitrary clipping/temporal rendering are outside this version's scope.
+Open **Layout Photos** from the print layout toolbar or **Layout → Layout Photos**. The plugin menu in the main window also has
+a fallback **Layout Photos…** command. Choose a map and
+viewpoint layer. Generate / Update refreshes image links, leaders and captions
+while preserving existing frame positions and sizes. Save the QGIS project to
+keep the frames across sessions. The optional **Save frame positions and sizes
+to layer** writes pf_x/pf_y/pf_map/dimX/dimY; commit the layer edits to retain
+this backup. A missing frame can be rebuilt from those fields for the matching
+map; new frames without a backup use the dialog's size and spacing settings.
+The fields hold one backup per feature, not a separate backup for every map.
+Static layouts in mm only; atlas and arbitrary clipping/temporal rendering
+are outside this version's scope.
 
 ## Style reuse
 
@@ -63,9 +71,9 @@ magically adopt styles from other projects without this storage or sidecar.
 
 ## Requirements and tests
 
-Target: QGIS 3.28–3.44/Qt 5, metric projected CRS. QGIS 4 not supported. Prior
-versions were tested by the user on QGIS 3.44.14/macOS. New style/schema behavior
-requires real-QGIS validation before public release.
+Targets QGIS 3 (Qt 5) and QGIS 4 (Qt 6), with a metric projected CRS.
+Automated integration checks were run on QGIS 3.40.6 / Qt 5.15.15.
+Version 0.7.0 was tested by the maintainer on QGIS 4.2.3. The maintainer also confirmed the layout button and menu in 0.7.4; see [the test checklist](QGIS4_TEST.md).
 
 From the parent directory:
 
@@ -115,3 +123,11 @@ Concept, requirements and hands-on testing: **Riccardo Casoli**. Code, original
 icons and documentation assistance: **ChatGPT / Codex (OpenAI)** through iterative
 collaboration. A human maintainer is required. Not an official QGIS/OpenAI product.
 GPL-3.0-or-later; full text in LICENSE.
+
+## Photo tips and layout captions
+
+Pause over a viewpoint in the active visible photo layer for a local photo
+thumbnail. Select **Open photo preview** to open the full preview on click. In **Layout photos**, check
+and reorder caption fields, and choose a font, size, alignment and colors.
+The filename comes from the local image path linked in `photo`. Caption
+settings are stored in the project for each layout map and viewpoint layer.
