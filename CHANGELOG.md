@@ -1,3 +1,7 @@
+## 0.7.8
+
+- First stable release; no functional changes from 0.7.7.
+
 ## 0.7.7
 
 - Qualify five legacy QGIS enum names flagged by the Qt 6 checker.

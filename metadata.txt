@@ -1,7 +1,7 @@
 [general]
 name = Photo viewpoint
 description = Three-click or GPS photo import, editable viewpoints, EXIF metadata and layout callouts.
-version = 0.7.7
+version = 0.7.8
 qgisMinimumVersion = 3.28
 qgisMaximumVersion = 4.99
 author=Riccardo Casoli
@@ -10,13 +10,14 @@ homepage = https://github.com/Riccardocasoli/photo-viewpoint#readme
 repository = https://github.com/Riccardocasoli/photo-viewpoint
 tracker = https://github.com/Riccardocasoli/photo-viewpoint/issues
 icon = icons/icon.png
-about = Create and edit photo viewpoints in three clicks, link local photos, inspect EXIF metadata and generate movable layout photo callouts. Italian and English interface and manuals. Requires a projected metric CRS. Experimental Qt 5 / Qt 6 compatibility build.
+about = Create and edit photo viewpoints in three clicks, link local photos, inspect EXIF metadata and generate movable layout photo callouts. Italian and English interface and manuals. Requires a projected metric CRS. Compatible with Qt 5 and Qt 6.
 category = Vector
 tags = photography,photo,viewpoint,exif,layout,field survey
 experimental = False
 deprecated = False
 hasProcessingProvider = False
-changelog = 0.7.7: Scope legacy QGIS enum names to resolve the Qt 6 compatibility report.
+changelog = 0.7.8: First stable release; no functional changes from 0.7.7.
+    0.7.7: Scope legacy QGIS enum names to resolve the Qt 6 compatibility report.
     0.7.6: Localize commands and dialogs by QGIS language; embed icons and localized screenshots in standalone manuals.
     0.7.5: Improve command labels and menu placement; add bilingual illustrated manuals and workflow GIFs.
     0.7.4: Passive photo previews with native tip coordination; register Layout Photos in standard designer controls.
